@@ -7,6 +7,17 @@ export interface BusinessUpgrade {
   costReduction?: number;
   employeeEfficiency?: number;
   unlocked: boolean;
+  category?: string;
+  tier?: string;
+  level?: number;
+  maxLevel?: number;
+  baseCost?: number;
+  currentCost?: number;
+  benefit?: number;
+  isMaxLevel?: boolean;
+  unlockRequirement?: number;
+  icon?: string;
+  color?: string;
 }
 
 export interface Business {
