@@ -758,7 +758,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       const business = prev.businesses[businessIndex];
       const newLevel = business.owned ? business.level + 1 : 1;
-      const shouldAutoGenerate = newLevel >= AUTO_GENERATE_LEVEL;
+      const shouldAutoGenerate = true;
       
       const metrics = calculateBusinessMetrics(business, newLevel);
 
@@ -801,7 +801,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
       incrementUserAction();
 
       const newLevel = business.owned ? business.level + 1 : 1;
-      const shouldAutoGenerate = newLevel >= AUTO_GENERATE_LEVEL;
+      const shouldAutoGenerate = true;
       
       const metrics = calculateBusinessMetrics(business, newLevel);
       
