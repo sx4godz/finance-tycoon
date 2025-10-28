@@ -43,7 +43,7 @@ const calculateUpgradeCost = (baseCost: number, level: number): number => {
 
 const calculateRevenue = (baseRevenue: number, level: number): number => {
   if (level === 0) return 0;
-  return Math.max(1, Math.floor(baseRevenue * Math.pow(REVENUE_MULTIPLIER, level)));
+  return Math.floor(baseRevenue * Math.pow(REVENUE_MULTIPLIER, level - 1));
 };
 
 export const BusinessCard: React.FC<BusinessCardProps> = ({

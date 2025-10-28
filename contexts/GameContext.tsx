@@ -312,6 +312,9 @@ export const [GameProvider, useGame] = createContextHook(() => {
         const premiumBonus = prev.isPremium ? 1 : 0;
         
         prev.businesses.forEach((business) => {
+          if (business.owned && business.autoGenerate) {
+            console.log(`[Income Loop] ${business.name}: owned=${business.owned}, autoGenerate=${business.autoGenerate}, netIncome/h=${business.netIncomePerHour}`);
+          }
           if (business.autoGenerate && business.owned && business.netIncomePerHour > 0) {
             const economicMultiplier = prev.economicPhase.multiplier;
             
@@ -816,6 +819,10 @@ export const [GameProvider, useGame] = createContextHook(() => {
         totalInvested: business.totalInvested + cost,
         employees: Math.min(newLevel, business.maxEmployees),
       };
+
+      console.log(`Upgraded ${business.name} to level ${newLevel}`);
+      console.log(`Revenue/h: ${metrics.revenuePerHour}, Costs/h: ${metrics.runningCostsPerHour}, Net/h: ${metrics.netIncomePerHour}`);
+      console.log(`AutoGenerate: ${shouldAutoGenerate}, Owned: true`);
 
       setTimeout(() => {
         checkAllAchievements();
