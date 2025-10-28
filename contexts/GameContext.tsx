@@ -315,7 +315,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
           if (business.owned && business.autoGenerate) {
             console.log(`[Income Loop] ${business.name}: owned=${business.owned}, autoGenerate=${business.autoGenerate}, netIncome/h=${business.netIncomePerHour}`);
           }
-          if (business.autoGenerate && business.owned && business.netIncomePerHour > 0) {
+          if (business.autoGenerate && business.owned) {
             const economicMultiplier = prev.economicPhase.multiplier;
             
             const sentimentMultiplier = 0.5 + (prev.marketSentiment / 100);
@@ -337,13 +337,19 @@ export const [GameProvider, useGame] = createContextHook(() => {
               }
             });
             
-            const netIncome = (business.netIncomePerHour / 3600) * 
+            const netIncomePerSecond = business.netIncomePerHour / 3600;
+            const netIncome = netIncomePerSecond * 
               prev.prestigeMultiplier * 
               (1 + luxuryBonus + premiumBonus) * 
               economicMultiplier * 
               sentimentMultiplier * 
               efficiencyMultiplier * 
               eventMultiplier;
+            
+            if (netIncomePerSecond > 0) {
+              console.log(`[Income Calculation] ${business.name}: base/s=${netIncomePerSecond.toFixed(4)}, final/s=${netIncome.toFixed(4)}`);
+            }
+            
             newCash += netIncome;
           }
         });
