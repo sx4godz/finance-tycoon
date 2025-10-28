@@ -154,8 +154,11 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
                       <Text style={styles.costs}>
                         Costs: -{formatNumber(business.runningCostsPerHour)}/h
                       </Text>
-                      <Text style={styles.netIncome}>
-                        Net: {formatNumber(business.netIncomePerHour)}/h
+                      <Text style={[
+                        styles.netIncome,
+                        business.netIncomePerHour < 0 && styles.netIncomeLoss
+                      ]}>
+                        Net: {business.netIncomePerHour >= 0 ? '+' : ''}{formatNumber(business.netIncomePerHour)}/h ({business.netIncomePerHour >= 0 ? '+' : ''}{formatNumber(business.netIncomePerHour / 3600)}/s)
                       </Text>
                     </>
                   )}
@@ -434,6 +437,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700" as const,
     color: "#059669",
+  },
+  netIncomeLoss: {
+    color: "#DC2626",
   },
   detailsToggle: {
     paddingHorizontal: 12,
