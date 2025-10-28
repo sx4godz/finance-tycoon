@@ -170,7 +170,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   },
 ];
 
-export const TAP_COST_MULTIPLIER = 1.65;
-export const MULTIPLIER_COST_MULTIPLIER = 1.45;
+export const TAP_COST_MULTIPLIER = 1.25;
+export const MULTIPLIER_COST_MULTIPLIER = 1.35;
 export const PRESTIGE_REQUIREMENT = 100000000;
-export const PRESTIGE_MULTIPLIER = 0.20;
+export const PRESTIGE_MULTIPLIER = 0.50;
