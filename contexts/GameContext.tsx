@@ -24,7 +24,13 @@ import {
 import { INITIAL_PROPERTIES, PROPERTY_COST_MULTIPLIER } from "@/constants/properties";
 import { INITIAL_LUXURY_ITEMS } from "@/constants/luxury";
 import { INITIAL_STOCKS, TRADING_UNLOCK_THRESHOLD } from "@/constants/stocks";
-import { GameState, Business } from "@/types/game";
+import { MARKET_EVENTS } from "@/constants/marketEvents";
+import { ECONOMY_CONFIG, ECONOMIC_INDICATORS } from "@/constants/economy";
+import { ALL_GOALS } from "@/constants/goals";
+import { calculateUpgradeBenefits } from "@/constants/businessUpgrades";
+import { calculatePropertyUpgradeBenefits } from "@/constants/propertyUpgrades";
+import { calculateLuxuryUpgradeBenefits } from "@/constants/luxuryUpgrades";
+import { GameState, Business, EconomicPhase, EconomicIndicators } from "@/types/game";
 
 const STORAGE_KEY = "finance_tycoon_game_state_v2";
 const AD_COOLDOWN = 300000;
@@ -68,6 +74,19 @@ const getInitialState = (): GameState => ({
   activeMarketEvents: [],
   isBankrupt: false,
   bankruptcyCount: 0,
+  economicPhase: {
+    phase: 'expansion',
+    duration: ECONOMY_CONFIG.CYCLE_LENGTH,
+    startTime: Date.now(),
+    multiplier: 1.0,
+  },
+  economicIndicators: { ...ECONOMIC_INDICATORS },
+  goals: ALL_GOALS.map(goal => ({ ...goal, progress: 0 })),
+  lastGoalReset: Date.now(),
+  marketSentiment: 50,
+  inflationRate: 0.0001,
+  efficiencyMultiplier: 1.0,
+  lastEconomicUpdate: Date.now(),
 });
 
 const calculateUpgradeCost = (baseCost: number, level: number): number => {
@@ -82,26 +101,19 @@ const calculateRevenue = (baseRevenue: number, level: number): number => {
 const calculateBusinessMetrics = (business: Business, level: number) => {
   const grossRevenue = calculateRevenue(business.baseRevenue, level);
   
-  const upgradeMultipliers = business.upgrades.reduce((acc, upgrade) => {
-    if (!upgrade.unlocked) return acc;
-    return {
-      revenue: acc.revenue * (upgrade.revenueMultiplier || 1),
-      costReduction: acc.costReduction + (upgrade.costReduction || 0),
-      efficiency: acc.efficiency * (upgrade.employeeEfficiency || 1),
-    };
-  }, { revenue: 1, costReduction: 0, efficiency: 1 });
+  const upgradeBenefits = calculateUpgradeBenefits(business.upgrades);
   
-  const finalCostReduction = Math.min(0.85, upgradeMultipliers.costReduction);
+  const finalCostReduction = Math.min(0.85, upgradeBenefits.costReduction);
   
-  const finalRevenue = Math.floor(grossRevenue * upgradeMultipliers.revenue);
+  const finalRevenue = Math.floor(grossRevenue * upgradeBenefits.revenueMultiplier);
   
   const employeeCost = business.maxEmployees > 0 
-    ? (finalRevenue * EMPLOYEE_SALARY_PERCENTAGE * (1 - finalCostReduction)) / upgradeMultipliers.efficiency
+    ? (finalRevenue * EMPLOYEE_SALARY_PERCENTAGE * (1 - finalCostReduction)) / upgradeBenefits.employeeEfficiency
     : 0;
   
   const maintenanceCost = finalRevenue * MAINTENANCE_COST_PERCENTAGE * (1 - finalCostReduction);
   const utilitiesCost = finalRevenue * UTILITIES_COST_PERCENTAGE * (1 - finalCostReduction);
-  const marketingCost = finalRevenue * MARKETING_COST_PERCENTAGE * (1 + business.marketingLevel * 0.1);
+  const marketingCost = finalRevenue * MARKETING_COST_PERCENTAGE * (1 + business.marketingLevel * 0.1) * upgradeBenefits.marketingMultiplier;
   
   const totalCosts = employeeCost + maintenanceCost + utilitiesCost + marketingCost;
   const netIncome = Math.max(0, finalRevenue - totalCosts);
@@ -159,6 +171,14 @@ export const [GameProvider, useGame] = createContextHook(() => {
             activeMarketEvents: parsed.activeMarketEvents ?? initialState.activeMarketEvents,
             isBankrupt: parsed.isBankrupt ?? initialState.isBankrupt,
             bankruptcyCount: parsed.bankruptcyCount ?? initialState.bankruptcyCount,
+            economicPhase: parsed.economicPhase ?? initialState.economicPhase,
+            economicIndicators: parsed.economicIndicators ?? initialState.economicIndicators,
+            goals: parsed.goals ?? initialState.goals,
+            lastGoalReset: parsed.lastGoalReset ?? initialState.lastGoalReset,
+            marketSentiment: parsed.marketSentiment ?? initialState.marketSentiment,
+            inflationRate: parsed.inflationRate ?? initialState.inflationRate,
+            efficiencyMultiplier: parsed.efficiencyMultiplier ?? initialState.efficiencyMultiplier,
+            lastEconomicUpdate: parsed.lastEconomicUpdate ?? initialState.lastEconomicUpdate,
             tapPower: {
               ...initialState.tapPower,
               ...(parsed.tapPower || {}),
@@ -277,7 +297,10 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
   const calculateLuxuryBonus = useCallback((state: GameState) => {
     return state.luxuryItems.reduce((total, item) => {
-      return item.owned ? total + item.multiplierBonus : total;
+      if (!item.owned) return total;
+      
+      const upgradeBenefits = calculateLuxuryUpgradeBenefits(item.upgrades);
+      return total + item.currentMultiplier + upgradeBenefits.multiplierBonus;
     }, 0);
   }, []);
 
@@ -290,7 +313,34 @@ export const [GameProvider, useGame] = createContextHook(() => {
         
         prev.businesses.forEach((business) => {
           if (business.autoGenerate && business.owned && business.netIncomePerHour > 0) {
-            const netIncome = (business.netIncomePerHour / 3600) * prev.prestigeMultiplier * (1 + luxuryBonus + premiumBonus);
+            const economicMultiplier = prev.economicPhase.multiplier;
+            
+            const sentimentMultiplier = 0.5 + (prev.marketSentiment / 100);
+            
+            const efficiencyMultiplier = prev.efficiencyMultiplier;
+            
+            let eventMultiplier = 1.0;
+            prev.activeMarketEvents.forEach(event => {
+              if (event.active) {
+                if (event.type === 'boom' && business.category === 'tech') {
+                  eventMultiplier *= 1.5;
+                } else if (event.type === 'crash') {
+                  eventMultiplier *= 0.75;
+                } else if (event.type === 'bonus') {
+                  eventMultiplier *= 1.2;
+                } else if (event.type === 'emergency') {
+                  eventMultiplier *= 0.6;
+                }
+              }
+            });
+            
+            const netIncome = (business.netIncomePerHour / 3600) * 
+              prev.prestigeMultiplier * 
+              (1 + luxuryBonus + premiumBonus) * 
+              economicMultiplier * 
+              sentimentMultiplier * 
+              efficiencyMultiplier * 
+              eventMultiplier;
             newCash += netIncome;
           }
         });
@@ -298,7 +348,32 @@ export const [GameProvider, useGame] = createContextHook(() => {
         prev.properties.forEach((property) => {
           if (property.owned) {
             const propertyIncome = property.rented ? property.rentIncome : property.incomePerHour;
-            const earnings = ((propertyIncome * property.level * prev.prestigeMultiplier * (1 + luxuryBonus + premiumBonus)) / 3600);
+            
+            const economicMultiplier = prev.economicPhase.multiplier;
+            
+            const sentimentMultiplier = 0.5 + (prev.marketSentiment / 100);
+            
+            let eventMultiplier = 1.0;
+            prev.activeMarketEvents.forEach(event => {
+              if (event.active) {
+                if (event.type === 'boom' && property.category === 'commercial') {
+                  eventMultiplier *= 1.75;
+                } else if (event.type === 'crash') {
+                  eventMultiplier *= 0.8;
+                } else if (event.type === 'bonus') {
+                  eventMultiplier *= 1.3;
+                } else if (event.type === 'emergency') {
+                  eventMultiplier *= 0.7;
+                }
+              }
+            });
+            
+            const earnings = ((propertyIncome * property.level * 
+              prev.prestigeMultiplier * 
+              (1 + luxuryBonus + premiumBonus) * 
+              economicMultiplier * 
+              sentimentMultiplier * 
+              eventMultiplier) / 3600);
             newCash += earnings;
           }
         });
@@ -358,6 +433,158 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
     return () => clearInterval(saveInterval);
   }, [saveGame]);
+
+  useEffect(() => {
+    const economicInterval = setInterval(() => {
+      setGameState((prev) => {
+        const now = Date.now();
+        const timeSinceLastUpdate = now - prev.lastEconomicUpdate;
+        
+        let newEconomicPhase = { ...prev.economicPhase };
+        if (now - newEconomicPhase.startTime > newEconomicPhase.duration) {
+          const phases = ['expansion', 'peak', 'recession', 'trough', 'recovery'] as const;
+          const currentIndex = phases.indexOf(newEconomicPhase.phase);
+          const nextPhase = phases[(currentIndex + 1) % phases.length];
+          
+          newEconomicPhase = {
+            phase: nextPhase,
+            duration: ECONOMY_CONFIG.CYCLE_LENGTH,
+            startTime: now,
+            multiplier: ECONOMY_CONFIG.BOOM_PROBABILITY,
+          };
+        }
+
+        const newIndicators = { ...prev.economicIndicators };
+        newIndicators.inflation += ECONOMY_CONFIG.INFLATION_RATE * (timeSinceLastUpdate / 1000);
+        newIndicators.gdpGrowth = Math.sin((now - newEconomicPhase.startTime) / newEconomicPhase.duration * Math.PI * 2) * 0.1;
+        newIndicators.marketSentiment = Math.max(0, Math.min(100, 
+          newIndicators.marketSentiment + (Math.random() - 0.5) * 0.1
+        ));
+
+        const newMarketSentiment = Math.max(0, Math.min(100, 
+          prev.marketSentiment + (Math.random() - 0.5) * 0.05
+        ));
+
+        const newEfficiencyMultiplier = Math.max(
+          ECONOMY_CONFIG.MIN_EFFICIENCY,
+          Math.min(
+            ECONOMY_CONFIG.MAX_EFFICIENCY,
+            prev.efficiencyMultiplier + (Math.random() - 0.5) * 0.001
+          )
+        );
+
+        return {
+          ...prev,
+          economicPhase: newEconomicPhase,
+          economicIndicators: newIndicators,
+          marketSentiment: newMarketSentiment,
+          efficiencyMultiplier: newEfficiencyMultiplier,
+          lastEconomicUpdate: now,
+        };
+      });
+    }, 10000);
+
+    return () => clearInterval(economicInterval);
+  }, []);
+
+  useEffect(() => {
+    const marketEventInterval = setInterval(() => {
+      setGameState((prev) => {
+        const now = Date.now();
+        const timeSinceLastEvent = now - (prev.activeMarketEvents[0]?.startTime || 0);
+        
+        if (timeSinceLastEvent > 300000 && Math.random() < 0.1) {
+          const availableEvents = MARKET_EVENTS.filter(event => 
+            !prev.activeMarketEvents.some(active => active.id === event.id)
+          );
+          
+          if (availableEvents.length > 0) {
+            const randomEvent = availableEvents[Math.floor(Math.random() * availableEvents.length)];
+            const newEvent = {
+              ...randomEvent,
+              startTime: now,
+              active: true,
+            };
+            
+            return {
+              ...prev,
+              activeMarketEvents: [...prev.activeMarketEvents, newEvent],
+            };
+          }
+        }
+
+        const activeEvents = prev.activeMarketEvents.filter(event => 
+          now - event.startTime < event.duration
+        );
+
+        return {
+          ...prev,
+          activeMarketEvents: activeEvents,
+        };
+      });
+    }, 30000);
+
+    return () => clearInterval(marketEventInterval);
+  }, []);
+
+  const checkAllGoals = useCallback(() => {
+    setGameState((prev) => {
+      const updatedGoals = prev.goals.map((goal) => {
+        if (goal.completed) return goal;
+        
+        let shouldComplete = false;
+        let progress = 0;
+        
+        switch (goal.type) {
+          case 'earnings':
+            progress = Math.min(goal.target, prev.totalEarnings);
+            shouldComplete = prev.totalEarnings >= goal.target;
+            break;
+          case 'businesses':
+            const ownedBusinesses = prev.businesses.filter(b => b.owned).length;
+            progress = Math.min(goal.target, ownedBusinesses);
+            shouldComplete = ownedBusinesses >= goal.target;
+            break;
+          case 'properties':
+            const ownedProperties = prev.properties.filter(p => p.owned).length;
+            progress = Math.min(goal.target, ownedProperties);
+            shouldComplete = ownedProperties >= goal.target;
+            break;
+          case 'stocks':
+            const ownedStocks = prev.stocks.filter(s => s.sharesOwned > 0).length;
+            progress = Math.min(goal.target, ownedStocks);
+            shouldComplete = ownedStocks >= goal.target;
+            break;
+          case 'luxury':
+            const ownedLuxury = prev.luxuryItems.filter(l => l.owned).length;
+            progress = Math.min(goal.target, ownedLuxury);
+            shouldComplete = ownedLuxury >= goal.target;
+            break;
+          case 'prestige':
+            progress = Math.min(goal.target, prev.prestigeLevel);
+            shouldComplete = prev.prestigeLevel >= goal.target;
+            break;
+          case 'trading':
+            progress = 0;
+            shouldComplete = false;
+            break;
+          case 'efficiency':
+            progress = 0;
+            shouldComplete = false;
+            break;
+        }
+        
+        if (shouldComplete) {
+          console.log(`Goal completed: ${goal.title}`);
+          return { ...goal, completed: true, progress };
+        }
+        
+        return { ...goal, progress };
+      });
+      
+      return { ...prev, goals: updatedGoals };
+    });
+  }, []);
 
   const checkAllAchievements = useCallback(() => {
     setGameState((prev) => {
@@ -497,7 +724,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         tapPower: {
           ...prev.tapPower,
           level: prev.tapPower.level + 1,
-          multiplier: prev.tapPower.multiplier + 0.1,
+          multiplier: prev.tapPower.multiplier + 0.25,
         },
       };
     });
@@ -547,6 +774,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       setTimeout(() => {
         checkAllAchievements();
+        checkAllGoals();
       }, 100);
 
       return {
@@ -554,7 +782,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         businesses: updatedBusinesses,
       };
     });
-  }, [watchFreeUpgradeAd, checkAllAchievements]);
+  }, [watchFreeUpgradeAd, checkAllAchievements, checkAllGoals]);
 
 
 
@@ -591,6 +819,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       setTimeout(() => {
         checkAllAchievements();
+        checkAllGoals();
       }, 100);
 
       return {
@@ -600,7 +829,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         businesses: updatedBusinesses,
       };
     });
-  }, [checkAllAchievements, incrementUserAction]);
+  }, [checkAllAchievements, checkAllGoals, incrementUserAction]);
 
   const upgradeBusinessOperation = useCallback((businessId: string, upgradeId: string) => {
     setGameState((prev) => {
@@ -614,7 +843,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
       if (upgradeIndex === -1) return prev;
 
       const upgrade = business.upgrades[upgradeIndex];
-      if (upgrade.unlocked || prev.cash < upgrade.cost) return prev;
+      if (upgrade.unlocked || prev.cash < upgrade.currentCost || upgrade.isMaxLevel) return prev;
 
       const updatedUpgrades = [...business.upgrades];
       updatedUpgrades[upgradeIndex] = {
@@ -638,9 +867,88 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       return {
         ...prev,
-        cash: prev.cash - upgrade.cost,
-        totalSpent: prev.totalSpent + upgrade.cost,
+        cash: prev.cash - upgrade.currentCost,
+        totalSpent: prev.totalSpent + upgrade.currentCost,
         businesses: updatedBusinesses,
+      };
+    });
+  }, []);
+
+  const upgradePropertyCustomization = useCallback((propertyId: string, customizationId: string) => {
+    setGameState((prev) => {
+      const propertyIndex = prev.properties.findIndex((p) => p.id === propertyId);
+      if (propertyIndex === -1) return prev;
+
+      const property = prev.properties[propertyIndex];
+      if (!property.owned) return prev;
+
+      const customizationIndex = property.customizations.findIndex((c) => c.id === customizationId);
+      if (customizationIndex === -1) return prev;
+
+      const customization = property.customizations[customizationIndex];
+      if (customization.unlocked || prev.cash < customization.currentCost || customization.isMaxLevel) return prev;
+
+      const updatedCustomizations = [...property.customizations];
+      updatedCustomizations[customizationIndex] = {
+        ...customization,
+        unlocked: true,
+      };
+
+      const updatedProperties = [...prev.properties];
+      updatedProperties[propertyIndex] = {
+        ...property,
+        customizations: updatedCustomizations,
+      };
+
+      console.log(`Upgraded ${property.name} with ${customization.name}`);
+
+      return {
+        ...prev,
+        cash: prev.cash - customization.currentCost,
+        totalSpent: prev.totalSpent + customization.currentCost,
+        properties: updatedProperties,
+      };
+    });
+  }, []);
+
+  const upgradeLuxuryItem = useCallback((luxuryId: string, upgradeId: string) => {
+    setGameState((prev) => {
+      const luxuryIndex = prev.luxuryItems.findIndex((l) => l.id === luxuryId);
+      if (luxuryIndex === -1) return prev;
+
+      const luxury = prev.luxuryItems[luxuryIndex];
+      if (!luxury.owned) return prev;
+
+      const upgradeIndex = luxury.upgrades.findIndex((u) => u.id === upgradeId);
+      if (upgradeIndex === -1) return prev;
+
+      const upgrade = luxury.upgrades[upgradeIndex];
+      if (upgrade.unlocked || prev.cash < upgrade.currentCost || upgrade.isMaxLevel) return prev;
+
+      const updatedUpgrades = [...luxury.upgrades];
+      updatedUpgrades[upgradeIndex] = {
+        ...upgrade,
+        unlocked: true,
+      };
+
+      const upgradeBenefits = calculateLuxuryUpgradeBenefits(updatedUpgrades);
+      const newMultiplier = luxury.baseMultiplier + upgradeBenefits.multiplierBonus;
+
+      const updatedLuxuryItems = [...prev.luxuryItems];
+      updatedLuxuryItems[luxuryIndex] = {
+        ...luxury,
+        upgrades: updatedUpgrades,
+        currentMultiplier: newMultiplier,
+        multiplierBonus: newMultiplier,
+      };
+
+      console.log(`Upgraded ${luxury.name} with ${upgrade.name}`);
+
+      return {
+        ...prev,
+        cash: prev.cash - upgrade.currentCost,
+        totalSpent: prev.totalSpent + upgrade.currentCost,
+        luxuryItems: updatedLuxuryItems,
       };
     });
   }, []);
@@ -726,6 +1034,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       setTimeout(() => {
         checkAllAchievements();
+        checkAllGoals();
       }, 100);
 
       return {
@@ -735,7 +1044,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         properties: updatedProperties,
       };
     });
-  }, [checkAllAchievements, incrementUserAction]);
+  }, [checkAllAchievements, checkAllGoals, incrementUserAction]);
 
   const upgradeProperty = useCallback((propertyId: string) => {
     setGameState((prev) => {
@@ -885,6 +1194,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       setTimeout(() => {
         checkAllAchievements();
+        checkAllGoals();
       }, 100);
 
       return {
@@ -894,7 +1204,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         luxuryItems: updatedItems,
       };
     });
-  }, [checkAllAchievements, incrementUserAction]);
+  }, [checkAllAchievements, checkAllGoals, incrementUserAction]);
 
   const buyStock = useCallback((stockId: string, shares: number) => {
     setGameState((prev) => {
@@ -916,6 +1226,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       setTimeout(() => {
         checkAllAchievements();
+        checkAllGoals();
       }, 100);
 
       return {
@@ -925,7 +1236,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         stocks: updatedStocks,
       };
     });
-  }, [checkAllAchievements, incrementUserAction]);
+  }, [checkAllAchievements, checkAllGoals, incrementUserAction]);
 
   const sellStock = useCallback((stockId: string, shares: number) => {
     setGameState((prev) => {
@@ -997,6 +1308,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       setTimeout(() => {
         checkAllAchievements();
+        checkAllGoals();
       }, 100);
 
       return {
@@ -1007,7 +1319,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         tradingUnlocked: newTotalEarnings >= TRADING_UNLOCK_THRESHOLD,
       };
     });
-  }, [calculateLuxuryBonus, checkAllAchievements, incrementUserAction]);
+  }, [calculateLuxuryBonus, checkAllAchievements, checkAllGoals, incrementUserAction]);
 
   const upgradeTapPower = useCallback(() => {
     incrementUserAction();
@@ -1025,7 +1337,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         tapPower: {
           ...prev.tapPower,
           level: prev.tapPower.level + 1,
-          multiplier: prev.tapPower.multiplier + 0.1,
+          multiplier: prev.tapPower.multiplier + 0.25,
         },
       };
     });
@@ -1068,6 +1380,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
 
       setTimeout(() => {
         checkAllAchievements();
+        checkAllGoals();
       }, 100);
 
       return {
@@ -1081,7 +1394,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         luxuryItems: prev.luxuryItems,
       };
     });
-  }, [checkAllAchievements]);
+  }, [checkAllAchievements, checkAllGoals]);
 
   const sellBusiness = useCallback((businessId: string) => {
     setGameState((prev) => {
@@ -1224,6 +1537,8 @@ export const [GameProvider, useGame] = createContextHook(() => {
     upgradeBusiness,
     upgradeBusinessWithAd,
     upgradeBusinessOperation,
+    upgradePropertyCustomization,
+    upgradeLuxuryItem,
     hireEmployee,
     upgradeMarketing,
     sellBusiness,
@@ -1247,6 +1562,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
     takeLoan,
     payLoan,
     checkAllAchievements,
+    checkAllGoals,
     canWatchAd,
     canShowFreeUpgradeOption,
     canWatchFreeUpgradeAd,
@@ -1259,6 +1575,8 @@ export const [GameProvider, useGame] = createContextHook(() => {
     upgradeBusiness,
     upgradeBusinessWithAd,
     upgradeBusinessOperation,
+    upgradePropertyCustomization,
+    upgradeLuxuryItem,
     hireEmployee,
     upgradeMarketing,
     sellBusiness,
@@ -1282,6 +1600,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
     takeLoan,
     payLoan,
     checkAllAchievements,
+    checkAllGoals,
     canWatchAd,
     canShowFreeUpgradeOption,
     canWatchFreeUpgradeAd,
