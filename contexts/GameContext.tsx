@@ -129,12 +129,14 @@ const calculateBusinessMetrics = (business: Business, level: number) => {
   
   const maintenanceCost = finalRevenue * MAINTENANCE_COST_PERCENTAGE * (1 - finalCostReduction);
   const utilitiesCost = finalRevenue * UTILITIES_COST_PERCENTAGE * (1 - finalCostReduction);
-  const marketingCost = finalRevenue * MARKETING_COST_PERCENTAGE * (1 + business.marketingLevel * 0.1) * marketingMultiplier;
+  
+  const marketingEffectiveness = 1 + (business.marketingLevel * 0.05);
+  const marketingCost = (finalRevenue * MARKETING_COST_PERCENTAGE) * marketingEffectiveness * (1 - finalCostReduction * 0.5);
   
   const totalCosts = employeeCost + maintenanceCost + utilitiesCost + marketingCost;
   const netIncome = finalRevenue - totalCosts;
   
-  console.log(`[Metrics] ${business.name} L${level}: Rev=${finalRevenue.toFixed(0)}, Costs=${totalCosts.toFixed(0)}, Net=${netIncome.toFixed(0)}, Multipliers: revenue=${revenueMultiplier.toFixed(2)}, employee=${employeeEfficiency.toFixed(2)}, marketing=${marketingMultiplier.toFixed(2)}, costReduction=${finalCostReduction.toFixed(2)}`);
+  console.log(`[Metrics] ${business.name} L${level}: Rev=${finalRevenue.toFixed(0)}/h (${(finalRevenue/3600).toFixed(2)}/s), Costs=${totalCosts.toFixed(0)}/h (${(totalCosts/3600).toFixed(2)}/s), Net=${netIncome.toFixed(0)}/h (${(netIncome/3600).toFixed(2)}/s)`);
   
   return {
     revenuePerHour: finalRevenue,
