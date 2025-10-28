@@ -1,48 +1,5 @@
-import { Business, BusinessUpgrade } from "@/types/game";
-
-const createBusinessUpgrades = (businessId: string, baseRevenue: number): BusinessUpgrade[] => [
-  {
-    id: `${businessId}_automation`,
-    name: "Automation System",
-    description: "Reduce labor costs by 25%",
-    cost: Math.floor(baseRevenue * 5),
-    costReduction: 0.25,
-    unlocked: false,
-  },
-  {
-    id: `${businessId}_marketing`,
-    name: "Premium Marketing",
-    description: "Increase revenue by 40%",
-    cost: Math.floor(baseRevenue * 8),
-    revenueMultiplier: 1.4,
-    unlocked: false,
-  },
-  {
-    id: `${businessId}_efficiency`,
-    name: "Efficiency Upgrade",
-    description: "Improve employee productivity by 30%",
-    cost: Math.floor(baseRevenue * 12),
-    employeeEfficiency: 1.3,
-    unlocked: false,
-  },
-  {
-    id: `${businessId}_expansion`,
-    name: "Business Expansion",
-    description: "Increase revenue by 60%",
-    cost: Math.floor(baseRevenue * 20),
-    revenueMultiplier: 1.6,
-    unlocked: false,
-  },
-  {
-    id: `${businessId}_premium`,
-    name: "Premium Quality",
-    description: "Double revenue, reduce costs by 15%",
-    cost: Math.floor(baseRevenue * 40),
-    revenueMultiplier: 2.0,
-    costReduction: 0.15,
-    unlocked: false,
-  },
-];
+import { Business } from "@/types/game";
+import { createBusinessUpgrades } from "./businessUpgrades";
 
 const createBusiness = (data: {
   id: string;
@@ -75,7 +32,7 @@ const createBusiness = (data: {
   automationLevel: 0,
   customerSatisfaction: 50,
   reputationScore: 50,
-  upgrades: createBusinessUpgrades(data.id, data.baseRevenue),
+  upgrades: createBusinessUpgrades(data.id, data.baseRevenue, 1),
   totalProfit: 0,
   totalRevenue: 0,
 });
@@ -570,8 +527,8 @@ const BUSINESSES_DATA: Business[] = [
 export const INITIAL_BUSINESSES: Business[] = BUSINESSES_DATA.sort((a, b) => a.baseCost - b.baseCost);
 
 export const AUTO_GENERATE_LEVEL = 1;
-export const COST_MULTIPLIER = 1.18;
-export const REVENUE_MULTIPLIER = 1.12;
+export const COST_MULTIPLIER = 1.15;
+export const REVENUE_MULTIPLIER = 1.18;
 
 export const EMPLOYEE_SALARY_PERCENTAGE = 0.18;
 export const MAINTENANCE_COST_PERCENTAGE = 0.06;
