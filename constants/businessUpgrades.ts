@@ -92,36 +92,43 @@ export const getNextUpgrade = (upgrades: BusinessUpgrade[], category: string): B
 export const calculateUpgradeBenefits = (upgrades: BusinessUpgrade[]) => {
   const unlockedUpgrades = upgrades.filter(u => u.unlocked);
   
-  return unlockedUpgrades.reduce((acc, upgrade) => {
+  const benefits = unlockedUpgrades.reduce((acc, upgrade) => {
     switch (upgrade.category) {
       case 'efficiency':
-        acc.revenueMultiplier *= (upgrade.revenueMultiplier || 1);
-        acc.employeeEfficiency *= (upgrade.employeeEfficiency || 1);
+        acc.revenueMultiplier *= (upgrade.revenueMultiplier || 1.0);
+        acc.employeeEfficiency *= (upgrade.employeeEfficiency || 1.0);
         break;
       case 'capacity':
-        acc.capacityMultiplier *= (upgrade.benefit || 1);
+        acc.capacityMultiplier *= (upgrade.benefit || 1.0);
         break;
       case 'quality':
-        acc.qualityMultiplier *= (upgrade.benefit || 1);
+        acc.qualityMultiplier *= (upgrade.benefit || 1.0);
+        acc.revenueMultiplier *= (1 + ((upgrade.benefit || 1.0) - 1) * 0.5);
         break;
       case 'automation':
         acc.costReduction += (upgrade.costReduction || 0);
         break;
       case 'marketing':
-        acc.marketingMultiplier *= (upgrade.benefit || 1);
+        acc.marketingMultiplier *= (upgrade.benefit || 1.0);
+        acc.revenueMultiplier *= (1 + ((upgrade.benefit || 1.0) - 1) * 0.3);
         break;
       case 'sustainability':
-        acc.sustainabilityMultiplier *= (upgrade.benefit || 1);
+        acc.sustainabilityMultiplier *= (upgrade.benefit || 1.0);
+        acc.costReduction += ((upgrade.benefit || 1.0) - 1) * 0.1;
         break;
     }
     return acc;
   }, {
-    revenueMultiplier: 1,
+    revenueMultiplier: 1.0,
     costReduction: 0,
-    employeeEfficiency: 1,
-    capacityMultiplier: 1,
-    qualityMultiplier: 1,
-    marketingMultiplier: 1,
-    sustainabilityMultiplier: 1,
+    employeeEfficiency: 1.0,
+    capacityMultiplier: 1.0,
+    qualityMultiplier: 1.0,
+    marketingMultiplier: 1.0,
+    sustainabilityMultiplier: 1.0,
   });
+  
+  console.log(`[Upgrade Benefits] Unlocked: ${unlockedUpgrades.length}, Revenue: ${benefits.revenueMultiplier.toFixed(2)}x, Cost Reduction: ${(benefits.costReduction * 100).toFixed(1)}%, Employee Eff: ${benefits.employeeEfficiency.toFixed(2)}x`);
+  
+  return benefits;
 };

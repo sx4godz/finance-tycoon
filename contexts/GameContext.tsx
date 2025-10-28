@@ -117,18 +117,24 @@ const calculateBusinessMetrics = (business: Business, level: number) => {
   
   const finalCostReduction = Math.min(0.85, upgradeBenefits.costReduction);
   
-  const finalRevenue = Math.floor(grossRevenue * upgradeBenefits.revenueMultiplier);
+  const revenueMultiplier = Math.max(1.0, upgradeBenefits.revenueMultiplier);
+  const employeeEfficiency = Math.max(1.0, upgradeBenefits.employeeEfficiency);
+  const marketingMultiplier = Math.max(1.0, upgradeBenefits.marketingMultiplier);
+  
+  const finalRevenue = Math.floor(grossRevenue * revenueMultiplier);
   
   const employeeCost = business.maxEmployees > 0 
-    ? (finalRevenue * EMPLOYEE_SALARY_PERCENTAGE * (1 - finalCostReduction)) / upgradeBenefits.employeeEfficiency
+    ? (finalRevenue * EMPLOYEE_SALARY_PERCENTAGE * (1 - finalCostReduction)) / employeeEfficiency
     : 0;
   
   const maintenanceCost = finalRevenue * MAINTENANCE_COST_PERCENTAGE * (1 - finalCostReduction);
   const utilitiesCost = finalRevenue * UTILITIES_COST_PERCENTAGE * (1 - finalCostReduction);
-  const marketingCost = finalRevenue * MARKETING_COST_PERCENTAGE * (1 + business.marketingLevel * 0.1) * upgradeBenefits.marketingMultiplier;
+  const marketingCost = finalRevenue * MARKETING_COST_PERCENTAGE * (1 + business.marketingLevel * 0.1) * marketingMultiplier;
   
   const totalCosts = employeeCost + maintenanceCost + utilitiesCost + marketingCost;
   const netIncome = finalRevenue - totalCosts;
+  
+  console.log(`[Metrics] ${business.name} L${level}: Rev=${finalRevenue.toFixed(0)}, Costs=${totalCosts.toFixed(0)}, Net=${netIncome.toFixed(0)}, Multipliers: revenue=${revenueMultiplier.toFixed(2)}, employee=${employeeEfficiency.toFixed(2)}, marketing=${marketingMultiplier.toFixed(2)}, costReduction=${finalCostReduction.toFixed(2)}`);
   
   return {
     revenuePerHour: finalRevenue,
@@ -815,11 +821,19 @@ export const [GameProvider, useGame] = createContextHook(() => {
       const newLevel = business.owned ? business.level + 1 : 1;
       const shouldAutoGenerate = true;
       
-      const metrics = calculateBusinessMetrics(business, newLevel);
+      const updatedUpgrades = business.upgrades.map(u => {
+        if (!business.owned && u.level === 1) {
+          return { ...u, unlocked: false };
+        }
+        return u;
+      });
+      
+      const businessWithUpgrades = { ...business, upgrades: updatedUpgrades };
+      const metrics = calculateBusinessMetrics(businessWithUpgrades, newLevel);
       
       const updatedBusinesses = [...prev.businesses];
       updatedBusinesses[businessIndex] = {
-        ...business,
+        ...businessWithUpgrades,
         level: newLevel,
         owned: true,
         autoGenerate: shouldAutoGenerate,
@@ -829,7 +843,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         employees: Math.min(newLevel, business.maxEmployees),
       };
 
-      console.log(`[Upgrade] ${business.name} L${newLevel}: Revenue=${metrics.revenuePerHour}/h, Costs=${metrics.runningCostsPerHour}/h, Net=${metrics.netIncomePerHour}/h, PerSec=${(metrics.netIncomePerHour/3600).toFixed(2)}/s`);
+      console.log(`[Upgrade] ${business.name} L${newLevel}: Revenue=${metrics.revenuePerHour.toFixed(0)}/h, Costs=${metrics.runningCostsPerHour.toFixed(0)}/h, Net=${metrics.netIncomePerHour.toFixed(0)}/h, PerSec=${(metrics.netIncomePerHour/3600).toFixed(2)}/s`);
 
       setTimeout(() => {
         checkAllAchievements();
@@ -877,7 +891,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         ...metrics,
       };
 
-      console.log(`[Business Upgrade] ${business.name} - ${upgrade.name}: New Net=${metrics.netIncomePerHour}/h (${(metrics.netIncomePerHour/3600).toFixed(2)}/s)`);
+      console.log(`[Business Upgrade] ${business.name} - ${upgrade.name}: New Net=${metrics.netIncomePerHour.toFixed(0)}/h (${(metrics.netIncomePerHour/3600).toFixed(2)}/s)`);
 
       return {
         ...prev,
