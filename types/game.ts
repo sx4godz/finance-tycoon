@@ -93,6 +93,16 @@ export interface PropertyCustomization {
   insuranceReduction?: number;
   unlocked: boolean;
   category: 'efficiency' | 'luxury' | 'security' | 'eco' | 'tech';
+  tier?: string;
+  level?: number;
+  maxLevel?: number;
+  baseCost?: number;
+  currentCost?: number;
+  benefit?: number;
+  isMaxLevel?: boolean;
+  unlockRequirement?: number;
+  icon?: string;
+  color?: string;
 }
 
 export interface Property {
@@ -122,6 +132,25 @@ export interface Property {
   amenitiesLevel: number;
 }
 
+export interface LuxuryUpgrade {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  category: string;
+  tier: string;
+  level: number;
+  maxLevel: number;
+  baseCost: number;
+  currentCost: number;
+  benefit: number;
+  isMaxLevel: boolean;
+  unlockRequirement: number;
+  icon: string;
+  color: string;
+  unlocked: boolean;
+}
+
 export interface LuxuryItem {
   id: string;
   name: string;
@@ -132,6 +161,13 @@ export interface LuxuryItem {
   category: 'vehicle' | 'jewelry' | 'art' | 'collectible';
   description: string;
   imageUrl?: string;
+  upgrades?: LuxuryUpgrade[];
+  level?: number;
+  maxLevel?: number;
+  baseCost?: number;
+  currentCost?: number;
+  baseMultiplier?: number;
+  currentMultiplier?: number;
 }
 
 export interface Stock {
