@@ -536,3 +536,5 @@ export const UTILITIES_COST_PERCENTAGE = 0.03;
 export const MARKETING_COST_PERCENTAGE = 0.02;
 
 export const BASE_PROFIT_MARGIN = 0.45;
+
+export const SECONDS_PER_HOUR = 3600;

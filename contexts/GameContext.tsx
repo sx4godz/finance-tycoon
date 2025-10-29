@@ -11,6 +11,7 @@ import {
   MAINTENANCE_COST_PERCENTAGE,
   UTILITIES_COST_PERCENTAGE,
   MARKETING_COST_PERCENTAGE,
+  SECONDS_PER_HOUR,
 } from "@/constants/businesses";
 import {
   INITIAL_TAP_UPGRADE,
@@ -121,7 +122,7 @@ const calculateBusinessMetrics = (business: Business, level: number) => {
   const employeeEfficiency = Math.max(1.0, upgradeBenefits.employeeEfficiency);
   const marketingMultiplier = Math.max(1.0, upgradeBenefits.marketingMultiplier);
   
-  const finalRevenue = Math.floor(grossRevenue * revenueMultiplier);
+  const finalRevenue = grossRevenue * revenueMultiplier * marketingMultiplier;
   
   const employeeCost = business.maxEmployees > 0 
     ? (finalRevenue * EMPLOYEE_SALARY_PERCENTAGE * (1 - finalCostReduction)) / employeeEfficiency
@@ -136,7 +137,11 @@ const calculateBusinessMetrics = (business: Business, level: number) => {
   const totalCosts = employeeCost + maintenanceCost + utilitiesCost + marketingCost;
   const netIncome = finalRevenue - totalCosts;
   
-  console.log(`[Metrics] ${business.name} L${level}: Rev=${finalRevenue.toFixed(0)}/h (${(finalRevenue/3600).toFixed(2)}/s), Costs=${totalCosts.toFixed(0)}/h (${(totalCosts/3600).toFixed(2)}/s), Net=${netIncome.toFixed(0)}/h (${(netIncome/3600).toFixed(2)}/s)`);
+  const revenuePerSec = finalRevenue / SECONDS_PER_HOUR;
+  const costsPerSec = totalCosts / SECONDS_PER_HOUR;
+  const netPerSec = netIncome / SECONDS_PER_HOUR;
+  
+  console.log(`[Metrics] ${business.name} L${level}: Rev=${revenuePerSec.toFixed(2)}/s, Costs=${costsPerSec.toFixed(2)}/s, Net=${netPerSec.toFixed(2)}/s, Upgrades: ${upgradeBenefits.revenueMultiplier.toFixed(2)}x`);
   
   return {
     revenuePerHour: finalRevenue,
@@ -273,13 +278,13 @@ export const [GameProvider, useGame] = createContextHook(() => {
           let offlineEarnings = 0;
           mergedState.businesses.forEach((business) => {
             if (business.autoGenerate && business.owned) {
-              offlineEarnings += (business.netIncomePerHour / 3600) * cappedSeconds;
+              offlineEarnings += (business.netIncomePerHour / SECONDS_PER_HOUR) * cappedSeconds;
             }
           });
           mergedState.properties.forEach((property) => {
             if (property.owned) {
               const propertyIncome = property.rented ? property.rentIncome : property.incomePerHour;
-              offlineEarnings += (propertyIncome * property.level / 3600) * cappedSeconds;
+              offlineEarnings += (propertyIncome * property.level / SECONDS_PER_HOUR) * cappedSeconds;
             }
           });
 
@@ -352,7 +357,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
               }
             });
             
-            const netIncomePerSecond = business.netIncomePerHour / 3600;
+            const netIncomePerSecond = business.netIncomePerHour / SECONDS_PER_HOUR;
             const netIncome = netIncomePerSecond * 
               prev.prestigeMultiplier * 
               (1 + luxuryBonus + premiumBonus) * 
@@ -393,7 +398,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
               (1 + luxuryBonus + premiumBonus) * 
               economicMultiplier * 
               sentimentMultiplier * 
-              eventMultiplier) / 3600);
+              eventMultiplier) / SECONDS_PER_HOUR);
             newCash += earnings;
           }
         });
@@ -823,12 +828,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
       const newLevel = business.owned ? business.level + 1 : 1;
       const shouldAutoGenerate = true;
       
-      const updatedUpgrades = business.upgrades.map(u => {
-        if (!business.owned && u.level === 1) {
-          return { ...u, unlocked: false };
-        }
-        return u;
-      });
+      const updatedUpgrades = business.upgrades.map(u => u);
       
       const businessWithUpgrades = { ...business, upgrades: updatedUpgrades };
       const metrics = calculateBusinessMetrics(businessWithUpgrades, newLevel);
@@ -845,7 +845,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         employees: Math.min(newLevel, business.maxEmployees),
       };
 
-      console.log(`[Upgrade] ${business.name} L${newLevel}: Revenue=${metrics.revenuePerHour.toFixed(0)}/h, Costs=${metrics.runningCostsPerHour.toFixed(0)}/h, Net=${metrics.netIncomePerHour.toFixed(0)}/h, PerSec=${(metrics.netIncomePerHour/3600).toFixed(2)}/s`);
+      console.log(`[Upgrade] ${business.name} L${newLevel}: Revenue=${(metrics.revenuePerHour/SECONDS_PER_HOUR).toFixed(2)}/s, Costs=${(metrics.runningCostsPerHour/SECONDS_PER_HOUR).toFixed(2)}/s, Net=${(metrics.netIncomePerHour/SECONDS_PER_HOUR).toFixed(2)}/s`);
 
       setTimeout(() => {
         checkAllAchievements();
@@ -893,7 +893,7 @@ export const [GameProvider, useGame] = createContextHook(() => {
         ...metrics,
       };
 
-      console.log(`[Business Upgrade] ${business.name} - ${upgrade.name}: New Net=${metrics.netIncomePerHour.toFixed(0)}/h (${(metrics.netIncomePerHour/3600).toFixed(2)}/s)`);
+      console.log(`[Business Upgrade] ${business.name} - ${upgrade.name}: New Net=${(metrics.netIncomePerHour/SECONDS_PER_HOUR).toFixed(2)}/s`);
 
       return {
         ...prev,

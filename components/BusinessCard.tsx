@@ -15,6 +15,7 @@ import {
   COST_MULTIPLIER,
   REVENUE_MULTIPLIER,
   AUTO_GENERATE_LEVEL,
+  SECONDS_PER_HOUR,
 } from "@/constants/businesses";
 
 interface BusinessCardProps {
@@ -147,18 +148,18 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
               {business.owned && (
                 <>
                   <Text style={styles.revenue}>
-                    Revenue: {formatNumber(business.revenuePerHour)}/h
+                    Revenue: {formatNumber(business.revenuePerHour / SECONDS_PER_HOUR)}/s
                   </Text>
                   {business.autoGenerate && (
                     <>
                       <Text style={styles.costs}>
-                        Costs: -{formatNumber(business.runningCostsPerHour)}/h
+                        Costs: -{formatNumber(business.runningCostsPerHour / SECONDS_PER_HOUR)}/s
                       </Text>
                       <Text style={[
                         styles.netIncome,
                         business.netIncomePerHour < 0 && styles.netIncomeLoss
                       ]}>
-                        Net: {business.netIncomePerHour >= 0 ? '+' : ''}{formatNumber(business.netIncomePerHour)}/h ({business.netIncomePerHour >= 0 ? '+' : ''}{formatNumber(business.netIncomePerHour / 3600)}/s)
+                        Net: {business.netIncomePerHour >= 0 ? '+' : ''}{formatNumber(business.netIncomePerHour / SECONDS_PER_HOUR)}/s
                       </Text>
                     </>
                   )}
@@ -191,7 +192,7 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
                 <Wrench size={16} color="#6B7280" />
                 <Text style={styles.detailLabel}>Maintenance</Text>
                 <Text style={styles.detailValue}>
-                  {formatNumber(business.maintenanceCostPerHour)}/h
+                  {formatNumber(business.maintenanceCostPerHour / SECONDS_PER_HOUR)}/s
                 </Text>
               </View>
             </View>
@@ -200,14 +201,14 @@ export const BusinessCard: React.FC<BusinessCardProps> = ({
                 <Zap size={16} color="#6B7280" />
                 <Text style={styles.detailLabel}>Employee Cost</Text>
                 <Text style={styles.detailValue}>
-                  {formatNumber(business.employeeSalaryPerHour)}/h
+                  {formatNumber(business.employeeSalaryPerHour / SECONDS_PER_HOUR)}/s
                 </Text>
               </View>
               <View style={styles.detailItem}>
                 <TrendingDown size={16} color="#6B7280" />
                 <Text style={styles.detailLabel}>Utilities</Text>
                 <Text style={styles.detailValue}>
-                  {formatNumber(business.utilitiesCostPerHour)}/h
+                  {formatNumber(business.utilitiesCostPerHour / SECONDS_PER_HOUR)}/s
                 </Text>
               </View>
             </View>
