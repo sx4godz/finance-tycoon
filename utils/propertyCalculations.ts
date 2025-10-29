@@ -3,31 +3,80 @@ import { GAME_CONFIG, calculateGlobalMultiplier } from '@/constants/gameConfig';
 
 export const calculatePropertyLevelCost = (property: Property): number => {
   if (!property.owned) return property.baseCost;
-  return property.baseCost * Math.pow(GAME_CONFIG.PROPERTIES.LEVEL_COST_MULTIPLIER, property.level);
+  return Math.floor(
+    property.baseCost * Math.pow(GAME_CONFIG.PROPERTIES.LEVEL_UPGRADE_COST_MULT, property.level)
+  );
 };
 
-export const calculatePropertyUpgradeCost = (
-  property: Property,
-  upgradeType: 'SmartMgmt' | 'Renovation'
-): number => {
-  let currentLevel: number;
-  let maxLevel: number;
-  
-  if (upgradeType === 'SmartMgmt') {
-    currentLevel = property.upgradeSmartMgmt;
-    maxLevel = GAME_CONFIG.PROPERTIES.UPGRADES.SMART_MGMT.MAX_LEVEL;
-  } else {
-    currentLevel = property.upgradeRenovation;
-    maxLevel = GAME_CONFIG.PROPERTIES.UPGRADES.RENOVATION.MAX_LEVEL;
+export const calculatePropertyValue = (property: Property): number => {
+  const baseValue = property.baseCost;
+  const upgradeValue = property.totalUpgradeSpend * GAME_CONFIG.PROPERTIES.VALUE_FORMULA_UPGRADE_MULT;
+  return baseValue + upgradeValue;
+};
+
+const getTenantQualityModifiers = (property: Property) => {
+  if (property.category !== 'RESIDENTIAL') {
+    return { rentMultiplier: 1.0, vacancyRate: 0.04, maintenanceAdd: 0 };
   }
   
-  if (currentLevel >= maxLevel) return Infinity;
+  const tier = property.tenantQuality;
+  const config = GAME_CONFIG.PROPERTIES.CATEGORIES.RESIDENTIAL.TENANT_QUALITY_TIERS[tier];
   
-  return (
-    property.baseCost * 0.3 * 
-    Math.pow(GAME_CONFIG.PROPERTIES.LEVEL_COST_MULTIPLIER, property.level) * 
-    Math.pow(2.0, currentLevel)
-  );
+  return {
+    rentMultiplier: config.rentMultiplier,
+    vacancyRate: config.vacancyRate,
+    maintenanceAdd: config.maintenanceAdd,
+  };
+};
+
+const getAmenityBonuses = (property: Property) => {
+  if (property.category !== 'RESIDENTIAL') {
+    return { rentBonus: 0, maintenanceAdd: 0, vacancyReduction: 0 };
+  }
+  
+  let rentBonus = 0;
+  let maintenanceAdd = 0;
+  let vacancyReduction = 0;
+  
+  const amenitiesConfig = GAME_CONFIG.PROPERTIES.CATEGORIES.RESIDENTIAL.AMENITIES;
+  
+  property.amenities.forEach(amenityKey => {
+    const key = amenityKey.toUpperCase() as keyof typeof amenitiesConfig;
+    if (amenitiesConfig[key]) {
+      rentBonus += amenitiesConfig[key].rentBonus;
+      maintenanceAdd += amenitiesConfig[key].maintenanceAdd;
+      const amenityConfig = amenitiesConfig[key];
+      if ('vacancyReduction' in amenityConfig && amenityConfig.vacancyReduction) {
+        vacancyReduction += amenityConfig.vacancyReduction;
+      }
+    }
+  });
+  
+  return { rentBonus, maintenanceAdd, vacancyReduction };
+};
+
+const getRegionalMultiplier = (
+  property: Property,
+  gameState: GameState
+): number => {
+  const regionalMods = gameState.regionalModifiers;
+  
+  switch (property.category) {
+    case 'RESIDENTIAL': {
+      const config = GAME_CONFIG.PROPERTIES.CATEGORIES.RESIDENTIAL.REGIONAL_FORMULA;
+      return config.baseMultiplier + config.indexWeight * regionalMods.housingPriceIndex;
+    }
+    
+    case 'COMMERCIAL': {
+      const config = GAME_CONFIG.PROPERTIES.CATEGORIES.COMMERCIAL.REGIONAL_FORMULA;
+      return config.baseMultiplier + config.indexWeight * regionalMods.businessRentDemand;
+    }
+    
+    case 'LUXURY_DEV': {
+      const config = GAME_CONFIG.PROPERTIES.CATEGORIES.LUXURY_DEV.REGIONAL_FORMULA;
+      return config.baseMultiplier + config.indexWeight * regionalMods.tourismIndex;
+    }
+  }
 };
 
 export const calculatePropertyMetrics = (
@@ -40,7 +89,7 @@ export const calculatePropertyMetrics = (
   insurancePerSec: number;
   netIncomePerHour: number;
 } => {
-  if (!property.owned) {
+  if (!property.owned || property.level === 0) {
     return {
       incomePerHour: 0,
       maintenancePerHour: 0,
@@ -50,64 +99,49 @@ export const calculatePropertyMetrics = (
     };
   }
   
+  const tenantMods = getTenantQualityModifiers(property);
+  const amenityBonuses = getAmenityBonuses(property);
+  
   let incomePH = property.baseIncomePH * property.level;
   
-  incomePH *= (1 + GAME_CONFIG.PROPERTIES.UPGRADES.RENOVATION.INCOME_ADD_PER_LEVEL * property.upgradeRenovation);
+  incomePH *= tenantMods.rentMultiplier;
   
-  let amenityBonus = 0;
-  property.amenities.forEach(amenityId => {
-    const amenity = GAME_CONFIG.PROPERTIES.AMENITIES[amenityId as keyof typeof GAME_CONFIG.PROPERTIES.AMENITIES];
-    if (amenity) {
-      amenityBonus += amenity.rent;
-    }
-  });
-  incomePH *= (1 + amenityBonus);
+  const renovationBonus = GAME_CONFIG.PROPERTIES.UPGRADES.RENOVATION.INCOME_ADD_PER_LEVEL * 
+    property.upgradeRenovation;
+  incomePH *= (1 + renovationBonus + amenityBonuses.rentBonus);
   
-  const tenantQuality = GAME_CONFIG.PROPERTIES.TENANT_QUALITY[property.tenantQuality];
-  incomePH *= tenantQuality.rentMult;
-  
-  let regionalMult = 1.0;
-  switch (property.category) {
-    case 'RESIDENTIAL':
-      regionalMult = GAME_CONFIG.PROPERTIES.REGIONAL_MODIFIERS.RESIDENTIAL_BASE + 
-                     GAME_CONFIG.PROPERTIES.REGIONAL_MODIFIERS.RESIDENTIAL_SENSITIVITY * 
-                     gameState.regionalModifiers.housingPriceIndex;
-      break;
-    case 'COMMERCIAL':
-      regionalMult = GAME_CONFIG.PROPERTIES.REGIONAL_MODIFIERS.COMMERCIAL_BASE + 
-                     GAME_CONFIG.PROPERTIES.REGIONAL_MODIFIERS.COMMERCIAL_SENSITIVITY * 
-                     gameState.regionalModifiers.businessRentDemand;
-      break;
-    case 'LUXURY_DEV':
-      regionalMult = GAME_CONFIG.PROPERTIES.REGIONAL_MODIFIERS.LUXURY_DEV_BASE + 
-                     GAME_CONFIG.PROPERTIES.REGIONAL_MODIFIERS.LUXURY_DEV_SENSITIVITY * 
-                     gameState.regionalModifiers.tourismIndex;
-      break;
+  if (property.upgradeFitout && property.category === 'COMMERCIAL') {
+    const fitoutBonus = GAME_CONFIG.PROPERTIES.CATEGORIES.COMMERCIAL.FITOUT_INVESTMENT.rentBonusPerTier * 
+      property.upgradeFitout;
+    incomePH *= (1 + fitoutBonus);
   }
+  
+  const regionalMult = getRegionalMultiplier(property, gameState);
   incomePH *= regionalMult;
   
-  const effectiveVacancy = Math.max(0, property.vacancyRate);
-  incomePH *= (1 - effectiveVacancy);
+  let effectiveVacancyRate = tenantMods.vacancyRate - amenityBonuses.vacancyReduction;
+  
+  if (property.upgradeScreening) {
+    effectiveVacancyRate -= GAME_CONFIG.PROPERTIES.UPGRADES.SCREENING.VACANCY_REDUCTION_PER_LEVEL * 
+      property.upgradeScreening;
+  }
+  
+  effectiveVacancyRate = Math.max(0, effectiveVacancyRate);
+  incomePH *= (1 - effectiveVacancyRate);
   
   let maintPH = incomePH * GAME_CONFIG.PROPERTIES.BASE_MAINTENANCE_RATE;
   
+  maintPH *= (1 + tenantMods.maintenanceAdd + amenityBonuses.maintenanceAdd);
+  
   const smartMgmtReduction = Math.min(
-    GAME_CONFIG.PROPERTIES.UPGRADES.SMART_MGMT.HARD_CAP,
-    GAME_CONFIG.PROPERTIES.UPGRADES.SMART_MGMT.MAINTENANCE_REDUCTION_PER_LEVEL * property.upgradeSmartMgmt
+    GAME_CONFIG.PROPERTIES.UPGRADES.SMART_MGMT.MAX_REDUCTION,
+    GAME_CONFIG.PROPERTIES.UPGRADES.SMART_MGMT.COST_REDUCTION_PER_LEVEL * property.upgradeSmartMgmt
   );
   maintPH *= (1 - smartMgmtReduction);
   
-  let amenityMaintAdd = 0;
-  property.amenities.forEach(amenityId => {
-    const amenity = GAME_CONFIG.PROPERTIES.AMENITIES[amenityId as keyof typeof GAME_CONFIG.PROPERTIES.AMENITIES];
-    if (amenity) {
-      amenityMaintAdd += amenity.maintenance;
-    }
-  });
-  maintPH += incomePH * amenityMaintAdd;
-  
-  const taxPS = (GAME_CONFIG.PROPERTIES.BASE_TAX_RATE * property.value) / (30 * 24 * 3600);
-  const insPS = (GAME_CONFIG.PROPERTIES.BASE_INSURANCE_RATE * property.value) / (30 * 24 * 3600);
+  const propertyValue = calculatePropertyValue(property);
+  const taxPS = (GAME_CONFIG.PROPERTIES.BASE_TAX_RATE_MONTHLY * propertyValue) / (30 * 24 * 3600);
+  const insPS = (GAME_CONFIG.PROPERTIES.BASE_INSURANCE_RATE_MONTHLY * propertyValue) / (30 * 24 * 3600);
   
   const netPH = incomePH - maintPH - (taxPS * 3600) - (insPS * 3600);
   
@@ -133,13 +167,13 @@ export const calculatePropertyNetPerSecond = (
     return item.owned ? sum + item.currentMultiplier : sum;
   }, 0);
   
-  const premiumBonus = gameState.isPremium ? 1 : 0;
+  const premiumBonus = gameState.isPremium ? GAME_CONFIG.GLOBAL.PREMIUM_BONUS : 0;
   
   let eventMult = 1.0;
   gameState.activeMarketEvents.forEach(event => {
     if (!event.active) return;
     
-    if (event.revenueMultiplier && !event.affectedCategories) {
+    if (event.revenueMultiplier) {
       eventMult *= event.revenueMultiplier;
     }
   });
@@ -157,14 +191,4 @@ export const calculatePropertyNetPerSecond = (
   });
   
   return localNetPS * globalMult;
-};
-
-export const calculatePropertyValue = (property: Property): number => {
-  if (!property.owned) return property.baseCost;
-  
-  const upgradeSpend = 
-    (property.upgradeSmartMgmt + property.upgradeRenovation) * 
-    property.baseCost * 0.1;
-  
-  return property.baseCost * Math.pow(1.1, property.level) + upgradeSpend * 0.7;
 };

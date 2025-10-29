@@ -1,71 +1,101 @@
-import { Stock, GameState, EconomicPhaseType } from '@/types/game';
-import { GAME_CONFIG } from '@/constants/gameConfig';
+import { Stock, StockSector, GameState } from '@/types/game';
+import { GAME_CONFIG, getStockPhaseBias, gaussian } from '@/constants/gameConfig';
 
-const gaussianRandom = (): number => {
-  let u = 0, v = 0;
-  while (u === 0) u = Math.random();
-  while (v === 0) v = Math.random();
-  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-};
-
-export const calculateStockPriceTick = (
-  stock: Stock,
-  phase: EconomicPhaseType,
-  activeEvents: GameState['activeMarketEvents']
-): number => {
-  const volatilitySigma = GAME_CONFIG.STOCKS.VOLATILITY[stock.volatility];
+export const tickStockPrice = (stock: Stock, gameState: GameState): number => {
+  const volatilityConfig = GAME_CONFIG.STOCKS.VOLATILITY;
+  const sigma = volatilityConfig[stock.volatility];
   
-  let drift = GAME_CONFIG.STOCKS.DRIFT_DAILY;
+  const phaseBias = getStockPhaseBias(gameState.economicPhase.phase);
   
-  const phaseDriftAdjustment = GAME_CONFIG.STOCKS.PHASE_DRIFT_ADJUSTMENT[phase] || 0;
-  drift += phaseDriftAdjustment;
-  
-  activeEvents.forEach(event => {
+  let eventBias = 0;
+  gameState.activeMarketEvents.forEach(event => {
     if (!event.active) return;
     
-    if (event.affectedSectors?.includes(stock.sector)) {
+    if (event.affectedSectors && event.affectedSectors.includes(stock.sector)) {
       if (event.type === 'boom') {
-        drift += 0.01;
+        eventBias += GAME_CONFIG.STOCKS.PRICE_MODEL.EVENT_BIAS.BOOM_SECTOR;
       } else if (event.type === 'crash') {
-        drift -= 0.01;
+        eventBias += GAME_CONFIG.STOCKS.PRICE_MODEL.EVENT_BIAS.CRASH_GLOBAL;
       }
-    }
-    
-    if (event.type === 'crash' && !event.affectedSectors) {
-      drift -= 0.01;
     }
   });
   
-  const randomNoise = gaussianRandom() * volatilitySigma;
+  const drift = GAME_CONFIG.STOCKS.PRICE_MODEL.DRIFT_DAILY / (24 * 3600 / GAME_CONFIG.STOCKS.TICK_INTERVAL_SEC);
+  const totalDrift = drift + phaseBias + eventBias;
   
-  const priceChange = drift + randomNoise;
-  const nextPrice = stock.currentPrice * (1 + priceChange);
+  const rand = gaussian(0, sigma);
   
-  const floor = stock.basePrice * GAME_CONFIG.STOCKS.FLOOR_MULTIPLE;
+  const nextPrice = stock.currentPrice * (1 + totalDrift + rand);
+  
+  const floor = stock.basePrice * GAME_CONFIG.STOCKS.PRICE_MODEL.FLOOR_MULTIPLE_OF_BASE;
   
   return Math.max(floor, nextPrice);
 };
 
-export const updateStockHistory = (stock: Stock, newPrice: number): number[] => {
-  const newHistory = [...stock.priceHistory, newPrice];
+export const calculateStockValue = (stock: Stock): number => {
+  return stock.currentPrice * stock.sharesOwned;
+};
+
+export const calculatePortfolioValue = (stocks: Stock[]): number => {
+  return stocks.reduce((sum, stock) => sum + calculateStockValue(stock), 0);
+};
+
+export const calculateRealizedProfit = (
+  stock: Stock,
+  sellPrice: number,
+  sharesSold: number
+): number => {
+  const buyPrice = stock.averageBuyPrice ?? stock.basePrice;
+  return (sellPrice - buyPrice) * sharesSold;
+};
+
+export const shouldTriggerStopLoss = (stock: Stock): boolean => {
+  if (!stock.stopLoss || stock.sharesOwned === 0) return false;
+  return stock.currentPrice <= stock.stopLoss;
+};
+
+export const shouldTriggerTakeProfit = (stock: Stock): boolean => {
+  if (!stock.takeProfit || stock.sharesOwned === 0) return false;
+  return stock.currentPrice >= stock.takeProfit;
+};
+
+export const getCategoryLeadingBonus = (
+  sector: StockSector,
+  gameState: GameState
+): number => {
+  const categoryMap: Record<StockSector, string> = {
+    Food: 'FOOD_BEV',
+    Retail: 'RETAIL_SERVICES',
+    Tech: 'TECH_APPS',
+    Industrial: 'INDUSTRIAL',
+    RealEstate: 'REAL_ESTATE_SERVICES',
+    Services: 'FINANCE_SERVICES',
+    Tourism: 'LUXURY_DEV',
+    Energy: 'INDUSTRIAL',
+  };
   
-  if (newHistory.length > GAME_CONFIG.STOCKS.HISTORY_LENGTH) {
-    newHistory.shift();
+  const category = categoryMap[sector];
+  if (!category) return 0;
+  
+  const dominance = gameState.categoryDominance[category as keyof typeof gameState.categoryDominance];
+  
+  if (dominance >= 0.50) {
+    return GAME_CONFIG.STOCKS.GAMEPLAY_LINKS.CATEGORY_LEADING_BONUS;
   }
   
-  return newHistory;
+  return 0;
 };
 
-export const calculateStockPortfolioValue = (stocks: Stock[]): number => {
-  return stocks.reduce((total, stock) => {
-    return total + (stock.currentPrice * stock.sharesOwned);
-  }, 0);
-};
-
-export const calculateStockProfitLoss = (
-  stock: Stock,
-  purchasePrice: number,
-  shares: number
+export const updateAverageBuyPrice = (
+  currentAverage: number | undefined,
+  currentShares: number,
+  newShares: number,
+  newPrice: number
 ): number => {
-  return (stock.currentPrice - purchasePrice) * shares;
+  if (currentShares === 0) return newPrice;
+  
+  const totalCost = (currentAverage ?? newPrice) * currentShares + newPrice * newShares;
+  const totalShares = currentShares + newShares;
+  
+  return totalCost / totalShares;
 };

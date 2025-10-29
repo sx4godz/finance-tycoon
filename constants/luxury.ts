@@ -9,12 +9,21 @@ const createLuxuryItem = (data: {
   multiplierBonus: number;
   category: 'vehicle' | 'jewelry' | 'art' | 'collectible';
   description: string;
+  prestigeRequirement?: number;
+  brandScore?: number;
   imageUrl?: string;
 }): LuxuryItem => {
-  return createLuxuryItemWithUpgrades({
-    ...data,
-    owned: false,
-  });
+  return {
+    ...createLuxuryItemWithUpgrades({
+      ...data,
+      owned: false,
+      upgradePolish: 0,
+      upgradeRefit: 0,
+      upgradeEntourage: false,
+      prestigeRequirement: data.prestigeRequirement ?? 0,
+      brandScore: data.brandScore ?? 1,
+    }),
+  };
 };
 
 export const INITIAL_LUXURY_ITEMS: LuxuryItem[] = [
@@ -26,6 +35,8 @@ export const INITIAL_LUXURY_ITEMS: LuxuryItem[] = [
     multiplierBonus: 0.02,
     category: 'jewelry',
     description: "+2% to all income",
+    prestigeRequirement: 0,
+    brandScore: 1,
     imageUrl: "https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=800&q=80",
   }),
   createLuxuryItem({
@@ -36,6 +47,8 @@ export const INITIAL_LUXURY_ITEMS: LuxuryItem[] = [
     multiplierBonus: 0.04,
     category: 'vehicle',
     description: "+4% to all income",
+    prestigeRequirement: 1,
+    brandScore: 2,
     imageUrl: "https://images.unsplash.com/photo-1563720360172-67b8f3dce741?w=800&q=80",
   }),
   createLuxuryItem({
@@ -116,6 +129,8 @@ export const INITIAL_LUXURY_ITEMS: LuxuryItem[] = [
     multiplierBonus: 0.28,
     category: 'vehicle',
     description: "+28% to all income",
+    prestigeRequirement: 3,
+    brandScore: 4,
     imageUrl: "https://images.unsplash.com/photo-1567899378494-47b22a2ae96a?w=800&q=80",
   }),
   createLuxuryItem({
@@ -146,6 +161,8 @@ export const INITIAL_LUXURY_ITEMS: LuxuryItem[] = [
     multiplierBonus: 0.50,
     category: 'vehicle',
     description: "+50% to all income",
+    prestigeRequirement: 5,
+    brandScore: 8,
     imageUrl: "https://images.unsplash.com/photo-1540962351504-03099e0a754b?w=800&q=80",
   }),
   createLuxuryItem({

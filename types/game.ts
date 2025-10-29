@@ -40,6 +40,23 @@ export interface BusinessUpgrade {
   marketingUpkeep?: number;
 }
 
+export interface SupplyContract {
+  type: 'short_term' | 'long_term';
+  cogsDelta: number;
+  flexible: boolean;
+  lockDays?: number;
+  startTime: number;
+}
+
+export interface WorkforceState {
+  staffSlots: number;
+  staffHired: number;
+  trainingLevel: number;
+  wagesMultiplier: number;
+  turnoverRate: number;
+  satisfactionScore: number;
+}
+
 export interface Business {
   id: string;
   name: string;
@@ -59,6 +76,9 @@ export interface Business {
   upgradeM: number;
   upgradeA: number;
   upgradeS: number;
+  upgradeRnD?: number;
+  upgradeInfra?: number;
+  upgradeSecurity?: number;
   
   revenuePerHour: number;
   employeeCostPerHour: number;
@@ -68,6 +88,16 @@ export interface Business {
   netIncomePerHour: number;
   
   priceIndex: number;
+  
+  supplyContract?: SupplyContract;
+  workforce?: WorkforceState;
+  
+  footTrafficIndex?: number;
+  networkEffectTier?: number;
+  qualityYield?: number;
+  
+  categoryRevenue?: number;
+  categoryDominanceShare?: number;
   
   purchasePrice: number;
   totalInvested: number;
@@ -99,6 +129,19 @@ export interface PropertyAmenity {
   cost: number;
 }
 
+export interface TenantQualityTier {
+  tier: 'A' | 'B' | 'C';
+  rentMultiplier: number;
+  vacancyRate: number;
+  maintenanceAdd: number;
+}
+
+export interface LeaseTerms {
+  months: 6 | 12 | 24;
+  startTime: number;
+  rentLocked: number;
+}
+
 export interface Property {
   id: string;
   name: string;
@@ -114,12 +157,18 @@ export interface Property {
   
   upgradeSmartMgmt: number;
   upgradeRenovation: number;
+  upgradeScreening?: number;
+  upgradeFitout?: number;
   
   amenities: string[];
   tenantQuality: 'A' | 'B' | 'C';
   vacancyRate: number;
+  occupancyRate?: number;
+  
+  leaseTerms?: LeaseTerms;
   
   value: number;
+  totalUpgradeSpend: number;
   
   incomePerHour: number;
   maintenancePerHour: number;
@@ -161,6 +210,9 @@ export interface LuxuryItem {
   upgradeRefit: number;
   upgradeEntourage: boolean;
   
+  entourageActive?: boolean;
+  lastEntourageEvent?: number;
+  
   description: string;
   imageUrl?: string;
 }
@@ -175,8 +227,18 @@ export interface Stock {
   basePrice: number;
   currentPrice: number;
   sharesOwned: number;
+  averageBuyPrice?: number;
   
   priceHistory: number[];
+  
+  stopLoss?: number;
+  takeProfit?: number;
+}
+
+export interface StockVolatilityConfig {
+  LOW: number;
+  MED: number;
+  HIGH: number;
 }
 
 export interface TapUpgrade {
@@ -233,6 +295,8 @@ export interface RegionalModifiers {
   housingPriceIndex: number;
   tourismIndex: number;
   businessRentDemand: number;
+  bulkMaterialsIndex: number;
+  energyCostIndex: number;
 }
 
 export interface Goal {
@@ -282,17 +346,24 @@ export interface GameState {
   marketSentiment: number;
   efficiencyMultiplier: number;
   lastEconomicUpdate: number;
+  lastSentimentUpdate: number;
+  lastEfficiencyUpdate: number;
   
   regionalModifiers: RegionalModifiers;
   
   activeMarketEvents: MarketEvent[];
   lastEventTime: number;
+  eventCooldownEnd: number;
   
   brandInfluenceScore: number;
   charityDonationRate: number;
+  reputationMultiplier: number;
   
   tradingUnlocked: boolean;
   stockRealizedProfits: number;
+  marginTradingUnlocked: boolean;
+  
+  categoryDominance: Record<BusinessCategory, number>;
   
   isPremium: boolean;
   adsWatched: number;
@@ -307,4 +378,5 @@ export interface GameState {
   lastFreeUpgradeAvailableTime: number;
   
   lastGoalReset: number;
+  lastStockTick: number;
 }

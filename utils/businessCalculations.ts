@@ -10,11 +10,14 @@ interface BusinessContext {
   shrinkageRate?: number;
   infraCostAdd?: number;
   energySurcharge?: number;
+  complianceCost?: number;
 }
 
 export const calculateBusinessLevelCost = (business: Business): number => {
   if (!business.owned) return business.baseCost;
-  return business.baseCost * Math.pow(GAME_CONFIG.BUSINESSES.LEVEL_COST_GROWTH, business.level);
+  return Math.floor(
+    business.baseCost * Math.pow(GAME_CONFIG.BUSINESSES.LEVEL_COST_GROWTH, business.level)
+  );
 };
 
 export const calculateBusinessUpgradeCost = (
@@ -49,42 +52,79 @@ export const calculateBusinessUpgradeCost = (
   
   if (currentLevel >= maxLevel) return Infinity;
   
-  return (
+  return Math.floor(
     business.baseRevenuePH * 2 * 
     Math.pow(GAME_CONFIG.BUSINESSES.LEVEL_COST_GROWTH, business.level) * 
     Math.pow(GAME_CONFIG.BUSINESSES.UPGRADE_COST_GROWTH, currentLevel)
   );
 };
 
-const getCategoryContext = (category: BusinessCategory): Partial<BusinessContext> => {
+const getCategoryContext = (
+  category: BusinessCategory,
+  business: Business,
+  gameState: GameState
+): Partial<BusinessContext> => {
+  const ctx: Partial<BusinessContext> = {};
+  
   switch (category) {
     case 'FOOD_BEV':
-      return {
-        elasticity: GAME_CONFIG.BUSINESSES.CATEGORIES.FOOD_BEV.ELASTICITY,
-        cogsRatioBase: GAME_CONFIG.BUSINESSES.CATEGORIES.FOOD_BEV.COGS_RATIO_BASE,
-      };
+      ctx.elasticity = GAME_CONFIG.BUSINESSES.CATEGORIES.FOOD_BEV.ELASTICITY;
+      ctx.cogsRatioBase = GAME_CONFIG.BUSINESSES.CATEGORIES.FOOD_BEV.COGS_RATIO_BASE;
+      
+      if (business.supplyContract?.type === 'short_term') {
+        ctx.cogsRatioBase += GAME_CONFIG.BUSINESSES.CATEGORIES.FOOD_BEV.VENDOR_CONTRACTS.SHORT_TERM.cogsDelta;
+      } else if (business.supplyContract?.type === 'long_term') {
+        ctx.cogsRatioBase += GAME_CONFIG.BUSINESSES.CATEGORIES.FOOD_BEV.VENDOR_CONTRACTS.LONG_TERM.cogsDelta;
+      }
+      break;
+      
     case 'RETAIL_SERVICES':
-      return {
-        elasticity: GAME_CONFIG.BUSINESSES.CATEGORIES.RETAIL_SERVICES.ELASTICITY,
-        shrinkageRate: GAME_CONFIG.BUSINESSES.CATEGORIES.RETAIL_SERVICES.SHRINKAGE_RATE,
-      };
+      ctx.elasticity = GAME_CONFIG.BUSINESSES.CATEGORIES.RETAIL_SERVICES.ELASTICITY;
+      ctx.shrinkageRate = GAME_CONFIG.BUSINESSES.CATEGORIES.RETAIL_SERVICES.SHRINKAGE_RATE;
+      
+      if (business.upgradeSecurity && business.upgradeSecurity > 0) {
+        ctx.shrinkageRate = Math.max(
+          0,
+          ctx.shrinkageRate + 
+          business.upgradeSecurity * GAME_CONFIG.BUSINESSES.CATEGORIES.RETAIL_SERVICES.SECURITY_UPGRADE.SHRINKAGE_DELTA_PER_LEVEL
+        );
+      }
+      
+      ctx.footTrafficIndex = business.footTrafficIndex ?? 1.0;
+      break;
+      
     case 'TECH_APPS':
-      return {
-        elasticity: GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.ELASTICITY,
-      };
+      ctx.elasticity = GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.ELASTICITY;
+      
+      if (business.level >= GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.INFRA_COST_START_LEVEL) {
+        const tier = Math.floor(
+          (business.level - GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.INFRA_COST_START_LEVEL) / 5
+        );
+        ctx.networkEffectMult = 1 + GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.NETWORK_EFFECT_BASE * tier;
+        ctx.infraCostAdd = GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.INFRA_COST_SLOPE * tier;
+      }
+      break;
+      
     case 'INDUSTRIAL':
-      return {
-        elasticity: GAME_CONFIG.BUSINESSES.CATEGORIES.INDUSTRIAL.ELASTICITY,
-      };
+      ctx.elasticity = GAME_CONFIG.BUSINESSES.CATEGORIES.INDUSTRIAL.ELASTICITY;
+      
+      if (gameState.regionalModifiers.energyCostIndex > 1.1) {
+        ctx.energySurcharge = GAME_CONFIG.BUSINESSES.CATEGORIES.INDUSTRIAL.LOGISTICS_SURCHARGE;
+      }
+      break;
+      
     case 'REAL_ESTATE_SERVICES':
-      return {
-        elasticity: GAME_CONFIG.BUSINESSES.CATEGORIES.REAL_ESTATE_SERVICES.ELASTICITY,
-      };
+      ctx.elasticity = GAME_CONFIG.BUSINESSES.CATEGORIES.REAL_ESTATE_SERVICES.ELASTICITY;
+      break;
+      
     case 'FINANCE_SERVICES':
-      return {
-        elasticity: GAME_CONFIG.BUSINESSES.CATEGORIES.FINANCE_SERVICES.ELASTICITY,
-      };
+      ctx.elasticity = GAME_CONFIG.BUSINESSES.CATEGORIES.FINANCE_SERVICES.ELASTICITY;
+      ctx.complianceCost = GAME_CONFIG.BUSINESSES.CATEGORIES.FINANCE_SERVICES.COMPLIANCE_COST;
+      break;
   }
+  
+  ctx.priceIndex = business.priceIndex;
+  return ctx;
 };
 
 export const calculateBusinessMetrics = (
@@ -109,30 +149,53 @@ export const calculateBusinessMetrics = (
     };
   }
   
-  const grossPH = business.baseRevenuePH * Math.pow(GAME_CONFIG.BUSINESSES.REVENUE_GROWTH, business.level - 1);
+  const grossPH = business.baseRevenuePH * 
+    Math.pow(GAME_CONFIG.BUSINESSES.REVENUE_GROWTH, business.level - 1);
   
   let revAdd = 0;
   revAdd += GAME_CONFIG.BUSINESSES.UPGRADES.EFFICIENCY.REV_ADD_PER_LEVEL * business.upgradeE;
   revAdd += GAME_CONFIG.BUSINESSES.UPGRADES.QUALITY.REV_ADD_PER_LEVEL * business.upgradeQ;
   revAdd += GAME_CONFIG.BUSINESSES.UPGRADES.MARKETING.REV_ADD_PER_LEVEL * business.upgradeM;
   
+  if (business.upgradeRnD) {
+    revAdd += GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.RND_UPGRADE.REV_ADD_PER_LEVEL * business.upgradeRnD;
+  }
+  
   let categoryRevenuePH = grossPH * (1 + revAdd);
   
-  const ctx = getCategoryContext(business.category);
+  const ctx = getCategoryContext(business.category, business, gameState);
   
-  if (ctx.elasticity !== undefined) {
-    const elasticityEffect = 1 + ctx.elasticity * (business.priceIndex - 1);
-    categoryRevenuePH *= Math.max(0.6, Math.min(1.3, elasticityEffect));
+  if (ctx.networkEffectMult) {
+    categoryRevenuePH *= ctx.networkEffectMult;
   }
   
-  if (business.category === 'TECH_APPS' && business.level >= GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.INFRA_COST_START_LEVEL) {
-    const tier = Math.floor((business.level - GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.INFRA_COST_START_LEVEL) / 5);
-    const networkEffect = 1 + GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.NETWORK_EFFECT_BASE * tier;
-    categoryRevenuePH *= networkEffect;
+  if (ctx.footTrafficIndex) {
+    categoryRevenuePH *= ctx.footTrafficIndex;
   }
   
-  const employeeEfficiency = 1 + GAME_CONFIG.BUSINESSES.UPGRADES.EFFICIENCY.EMPLOYEE_EFF_PER_LEVEL * business.upgradeE;
-  const employees = categoryRevenuePH * GAME_CONFIG.BUSINESSES.EMPLOYEE_COST_BASE / employeeEfficiency;
+  if (ctx.elasticity !== undefined && ctx.priceIndex) {
+    const elasticityEffect = 1 + ctx.elasticity * (ctx.priceIndex - 1);
+    const clampedEffect = Math.max(
+      GAME_CONFIG.PRICING_DEMAND.REVENUE_MULTIPLIER_CLAMP.min,
+      Math.min(GAME_CONFIG.PRICING_DEMAND.REVENUE_MULTIPLIER_CLAMP.max, elasticityEffect)
+    );
+    categoryRevenuePH *= clampedEffect;
+  }
+  
+  const dominanceBonus = calculateDominanceBonus(business.category, gameState);
+  categoryRevenuePH *= (1 + dominanceBonus.revenueBonus);
+  
+  const employeeEfficiency = 1 + 
+    GAME_CONFIG.BUSINESSES.UPGRADES.EFFICIENCY.EMPLOYEE_EFF_PER_LEVEL * business.upgradeE;
+  
+  let workforceEffMult = 1.0;
+  if (business.workforce) {
+    workforceEffMult = 1 + business.workforce.trainingLevel * 
+      GAME_CONFIG.BUSINESSES.WORKFORCE.TRAINING_EFFICIENCY_PER_LEVEL;
+  }
+  
+  const employees = categoryRevenuePH * GAME_CONFIG.BUSINESSES.EMPLOYEE_COST_BASE / 
+    (employeeEfficiency * workforceEffMult);
   
   let operations = categoryRevenuePH * (
     business.category === 'INDUSTRIAL' 
@@ -146,16 +209,22 @@ export const calculateBusinessMetrics = (
   if (ctx.shrinkageRate) {
     operations += categoryRevenuePH * ctx.shrinkageRate;
   }
-  if (business.category === 'TECH_APPS' && business.level >= GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.INFRA_COST_START_LEVEL) {
-    const tier = Math.floor((business.level - GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.INFRA_COST_START_LEVEL) / 5);
-    operations += categoryRevenuePH * GAME_CONFIG.BUSINESSES.CATEGORIES.TECH_APPS.INFRA_COST_SLOPE * tier;
+  if (ctx.infraCostAdd) {
+    operations += categoryRevenuePH * ctx.infraCostAdd;
   }
-  if (business.category === 'FINANCE_SERVICES') {
-    operations += categoryRevenuePH * GAME_CONFIG.BUSINESSES.CATEGORIES.FINANCE_SERVICES.COMPLIANCE_COST;
+  if (ctx.energySurcharge) {
+    operations += categoryRevenuePH * ctx.energySurcharge;
+  }
+  if (ctx.complianceCost) {
+    operations += categoryRevenuePH * ctx.complianceCost;
   }
   
-  const marketingUpkeepMult = 1 + GAME_CONFIG.BUSINESSES.UPGRADES.MARKETING.UPKEEP_SLOPE_PER_LEVEL * business.upgradeM;
-  const marketing = categoryRevenuePH * GAME_CONFIG.BUSINESSES.MARKETING_COST_BASE * marketingUpkeepMult;
+  const marketingUpkeepMult = (1 + 
+    GAME_CONFIG.BUSINESSES.UPGRADES.MARKETING.UPKEEP_SLOPE_PER_LEVEL * business.upgradeM
+  ) * (1 - dominanceBonus.marketingUpkeepReduction);
+  
+  const marketing = categoryRevenuePH * GAME_CONFIG.BUSINESSES.MARKETING_COST_BASE * 
+    marketingUpkeepMult;
   
   const rawCostsPH = employees + operations + marketing;
   
@@ -163,7 +232,8 @@ export const calculateBusinessMetrics = (
     GAME_CONFIG.BUSINESSES.UPGRADES.AUTOMATION.HARD_CAP,
     GAME_CONFIG.BUSINESSES.UPGRADES.AUTOMATION.COST_REDUCTION_PER_LEVEL * business.upgradeA
   );
-  const sustainabilityReduction = GAME_CONFIG.BUSINESSES.UPGRADES.SUSTAINABILITY.COST_REDUCTION_PER_LEVEL * business.upgradeS;
+  const sustainabilityReduction = 
+    GAME_CONFIG.BUSINESSES.UPGRADES.SUSTAINABILITY.COST_REDUCTION_PER_LEVEL * business.upgradeS;
   const costMult = (1 - automationReduction) * (1 - sustainabilityReduction);
   
   const finalCostsPH = rawCostsPH * costMult;
@@ -193,7 +263,7 @@ export const calculateBusinessNetPerSecond = (
     return item.owned ? sum + item.currentMultiplier : sum;
   }, 0);
   
-  const premiumBonus = gameState.isPremium ? 1 : 0;
+  const premiumBonus = gameState.isPremium ? GAME_CONFIG.GLOBAL.PREMIUM_BONUS : 0;
   
   let eventMult = 1.0;
   gameState.activeMarketEvents.forEach(event => {
@@ -221,4 +291,47 @@ export const calculateBusinessNetPerSecond = (
   });
   
   return localNetPS * globalMult;
+};
+
+export const calculateDominanceBonus = (
+  category: BusinessCategory,
+  gameState: GameState
+): { revenueBonus: number; marketingUpkeepReduction: number } => {
+  const share = gameState.categoryDominance[category] ?? 0;
+  
+  let revenueBonus = 0;
+  let marketingUpkeepReduction = 0;
+  
+  for (const threshold of GAME_CONFIG.BUSINESSES.DOMINANCE.THRESHOLDS) {
+    if (share >= threshold.share) {
+      revenueBonus = threshold.revenueBonus;
+      marketingUpkeepReduction = 'marketingUpkeepReduction' in threshold ? threshold.marketingUpkeepReduction : 0;
+    }
+  }
+  
+  return { revenueBonus, marketingUpkeepReduction };
+};
+
+export const calculateCategoryRevenue = (
+  category: BusinessCategory,
+  gameState: GameState
+): number => {
+  return gameState.businesses
+    .filter(b => b.category === category && b.owned)
+    .reduce((sum, b) => {
+      const metrics = calculateBusinessMetrics(b, gameState);
+      return sum + metrics.revenuePerHour;
+    }, 0);
+};
+
+export const calculateCategoryDominance = (
+  category: BusinessCategory,
+  gameState: GameState
+): number => {
+  const playerRevenue = calculateCategoryRevenue(category, gameState);
+  
+  const npcBaseline = 1000000;
+  const totalRevenue = playerRevenue + npcBaseline;
+  
+  return totalRevenue > 0 ? playerRevenue / totalRevenue : 0;
 };
