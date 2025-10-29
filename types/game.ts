@@ -1,57 +1,182 @@
+export type BusinessCategory = 
+  | 'FOOD_BEV' 
+  | 'RETAIL_SERVICES' 
+  | 'TECH_APPS' 
+  | 'INDUSTRIAL' 
+  | 'REAL_ESTATE_SERVICES' 
+  | 'FINANCE_SERVICES';
+
+export type PropertyCategory = 'RESIDENTIAL' | 'COMMERCIAL' | 'LUXURY_DEV';
+
+export type StockSector = 
+  | 'Food' 
+  | 'Retail' 
+  | 'Tech' 
+  | 'Industrial' 
+  | 'RealEstate' 
+  | 'Services' 
+  | 'Tourism' 
+  | 'Energy';
+
+export type VolatilityTier = 'LOW' | 'MED' | 'HIGH';
+
+export type EconomicPhaseType = 'expansion' | 'peak' | 'recession' | 'trough' | 'recovery';
+
+export type MarketEventType = 'boom' | 'crash' | 'emergency' | 'holiday';
+
 export interface BusinessUpgrade {
   id: string;
   name: string;
   description: string;
-  cost: number;
-  revenueMultiplier?: number;
-  costReduction?: number;
-  employeeEfficiency?: number;
-  unlocked: boolean;
-  category: string;
-  tier: string;
   level: number;
   maxLevel: number;
   baseCost: number;
-  currentCost: number;
-  benefit: number;
-  isMaxLevel: boolean;
-  unlockRequirement: number;
-  icon: string;
-  color: string;
+  costMultiplier: number;
+  unlocked: boolean;
+  
+  revenueAdd?: number;
+  employeeEfficiency?: number;
+  costReduction?: number;
+  marketingUpkeep?: number;
 }
 
 export interface Business {
   id: string;
   name: string;
   icon: string;
-  baseRevenue: number;
+  category: BusinessCategory;
+  subtype: string;
+  
+  baseRevenuePH: number;
   baseCost: number;
+  
   level: number;
   owned: boolean;
   autoGenerate: boolean;
+  
+  upgradeE: number;
+  upgradeQ: number;
+  upgradeM: number;
+  upgradeA: number;
+  upgradeS: number;
+  
   revenuePerHour: number;
-  runningCostsPerHour: number;
+  employeeCostPerHour: number;
+  operationsCostPerHour: number;
+  marketingCostPerHour: number;
+  totalCostsPerHour: number;
   netIncomePerHour: number;
-  imageUrl?: string;
+  
+  priceIndex: number;
+  
   purchasePrice: number;
   totalInvested: number;
-  employees: number;
-  maxEmployees: number;
-  employeeSalaryPerHour: number;
-  maintenanceCostPerHour: number;
-  utilitiesCostPerHour: number;
-  marketingBudgetPerHour: number;
-  category: 'financial' | 'food' | 'tech' | 'retail' | 'energy' | 'entertainment';
-  operatingHours: number;
-  marketingLevel: number;
-  efficiencyLevel: number;
-  qualityLevel: number;
-  automationLevel: number;
-  customerSatisfaction: number;
-  reputationScore: number;
-  upgrades: BusinessUpgrade[];
-  totalProfit: number;
-  totalRevenue: number;
+  
+  imageUrl?: string;
+}
+
+export interface PropertyUpgrade {
+  id: string;
+  name: string;
+  description: string;
+  level: number;
+  maxLevel: number;
+  baseCost: number;
+  costMultiplier: number;
+  unlocked: boolean;
+  
+  maintenanceReduction?: number;
+  incomeAdd?: number;
+}
+
+export interface PropertyAmenity {
+  id: string;
+  name: string;
+  rentBonus: number;
+  maintenanceAdd: number;
+  vacancyReduction?: number;
+  unlocked: boolean;
+  cost: number;
+}
+
+export interface Property {
+  id: string;
+  name: string;
+  icon: string;
+  category: PropertyCategory;
+  subtype: string;
+  
+  baseCost: number;
+  baseIncomePH: number;
+  
+  level: number;
+  owned: boolean;
+  
+  upgradeSmartMgmt: number;
+  upgradeRenovation: number;
+  
+  amenities: string[];
+  tenantQuality: 'A' | 'B' | 'C';
+  vacancyRate: number;
+  
+  value: number;
+  
+  incomePerHour: number;
+  maintenancePerHour: number;
+  taxesPerSec: number;
+  insurancePerSec: number;
+  netIncomePerHour: number;
+  
+  purchasePrice: number;
+  
+  imageUrl?: string;
+}
+
+export interface LuxuryUpgrade {
+  id: string;
+  name: string;
+  description: string;
+  level: number;
+  maxLevel: number;
+  baseCost: number;
+  costMultiplier: number;
+  multiplierAdd: number;
+  unlocked: boolean;
+}
+
+export interface LuxuryItem {
+  id: string;
+  name: string;
+  icon: string;
+  cost: number;
+  owned: boolean;
+  
+  baseMultiplier: number;
+  currentMultiplier: number;
+  
+  prestigeRequirement: number;
+  brandScore: number;
+  
+  upgradePolish: number;
+  upgradeRefit: number;
+  upgradeEntourage: boolean;
+  
+  description: string;
+  imageUrl?: string;
+}
+
+export interface Stock {
+  id: string;
+  name: string;
+  symbol: string;
+  sector: StockSector;
+  volatility: VolatilityTier;
+  
+  basePrice: number;
+  currentPrice: number;
+  sharesOwned: number;
+  
+  priceHistory: number[];
 }
 
 export interface TapUpgrade {
@@ -81,141 +206,33 @@ export interface Achievement {
   reward: number;
 }
 
-export interface PropertyCustomization {
-  id: string;
-  name: string;
-  description: string;
-  cost: number;
-  maintenanceReduction?: number;
-  incomeBoost?: number;
-  valueBoost?: number;
-  taxReduction?: number;
-  insuranceReduction?: number;
-  unlocked: boolean;
-  category: 'efficiency' | 'luxury' | 'security' | 'eco' | 'tech';
-  tier: string;
-  level: number;
-  maxLevel: number;
-  baseCost: number;
-  currentCost: number;
-  benefit: number;
-  isMaxLevel: boolean;
-  unlockRequirement: number;
-  icon: string;
-  color: string;
-}
-
-export interface Property {
-  id: string;
-  name: string;
-  icon: string;
-  baseValue: number;
-  baseCost: number;
-  incomePerHour: number;
-  level: number;
-  owned: boolean;
-  category: 'residential' | 'commercial' | 'luxury' | 'exotic';
-  imageUrl?: string;
-  purchasePrice: number;
-  currentMarketValue: number;
-  marketTrend: number;
-  maintenanceCostPerHour: number;
-  taxesPerMonth: number;
-  insurancePerMonth: number;
-  rented: boolean;
-  rentIncome: number;
-  customizations: PropertyCustomization[];
-  tenantQuality: number;
-  conditionScore: number;
-  energyEfficiency: number;
-  securityLevel: number;
-  amenitiesLevel: number;
-}
-
-export interface LuxuryItem {
-  id: string;
-  name: string;
-  icon: string;
-  cost: number;
-  owned: boolean;
-  multiplierBonus: number;
-  category: 'vehicle' | 'jewelry' | 'art' | 'collectible';
-  description: string;
-  imageUrl?: string;
-  upgrades: LuxuryUpgrade[];
-  level: number;
-  maxLevel: number;
-  baseCost: number;
-  currentCost: number;
-  baseMultiplier: number;
-  currentMultiplier: number;
-}
-
-export interface LuxuryUpgrade {
-  id: string;
-  name: string;
-  description: string;
-  cost: number;
-  category: string;
-  tier: string;
-  level: number;
-  maxLevel: number;
-  baseCost: number;
-  currentCost: number;
-  benefit: number;
-  isMaxLevel: boolean;
-  unlockRequirement: number;
-  icon: string;
-  color: string;
-  unlocked: boolean;
-}
-
-export interface Stock {
-  id: string;
-  name: string;
-  symbol: string;
-  currentPrice: number;
-  basePrice: number;
-  volatility: number;
-  sharesOwned: number;
-  priceHistory: number[];
-}
-
-export interface Loan {
-  id: string;
-  amount: number;
-  interestRate: number;
-  monthlyPayment: number;
-  remainingMonths: number;
-  totalOwed: number;
-  takenAt: number;
-}
-
-export interface Expense {
-  type: 'tax' | 'insurance' | 'loan' | 'maintenance' | 'employee' | 'utility';
-  amount: number;
-  frequency: 'hourly' | 'daily' | 'monthly';
-  description: string;
-}
-
 export interface MarketEvent {
   id: string;
-  type: 'boom' | 'crash' | 'tax_hike' | 'emergency' | 'bonus';
+  type: MarketEventType;
   title: string;
   description: string;
   effect: string;
   duration: number;
   startTime: number;
   active: boolean;
-  multiplier?: number;
-  affectedSectors?: string[];
+  
+  revenueMultiplier?: number;
+  costsMultiplier?: number;
+  affectedCategories?: BusinessCategory[];
+  affectedSectors?: StockSector[];
 }
 
 export interface EconomicPhase {
-  phase: 'expansion' | 'peak' | 'recession' | 'trough' | 'recovery';
+  phase: EconomicPhaseType;
   duration: number;
   startTime: number;
   multiplier: number;
+}
+
+export interface RegionalModifiers {
+  housingPriceIndex: number;
+  tourismIndex: number;
+  businessRentDemand: number;
 }
 
 export interface Goal {
@@ -238,32 +255,45 @@ export interface Goal {
   progress?: number;
 }
 
-export interface EconomicIndicators {
-  gdpGrowth: number;
-  inflation: number;
-  unemployment: number;
-  consumerConfidence: number;
-  marketSentiment: number;
-  interestRate: number;
-}
-
 export interface GameState {
   cash: number;
+  
   businesses: Business[];
   properties: Property[];
   luxuryItems: LuxuryItem[];
   stocks: Stock[];
+  
   totalEarnings: number;
   totalSpent: number;
   netWorth: number;
   lastSaveTime: number;
+  
   tapPower: TapUpgrade;
   multipliers: Multiplier[];
   lifetimeTaps: number;
+  
   achievements: Achievement[];
+  goals: Goal[];
+  
   prestigeLevel: number;
   prestigeMultiplier: number;
+  
+  economicPhase: EconomicPhase;
+  marketSentiment: number;
+  efficiencyMultiplier: number;
+  lastEconomicUpdate: number;
+  
+  regionalModifiers: RegionalModifiers;
+  
+  activeMarketEvents: MarketEvent[];
+  lastEventTime: number;
+  
+  brandInfluenceScore: number;
+  charityDonationRate: number;
+  
   tradingUnlocked: boolean;
+  stockRealizedProfits: number;
+  
   isPremium: boolean;
   adsWatched: number;
   lastAdWatchTime: number;
@@ -275,19 +305,6 @@ export interface GameState {
   doubleEarningsEndTime: number;
   sessionStartTime: number;
   lastFreeUpgradeAvailableTime: number;
-  loans: Loan[];
-  totalDebt: number;
-  monthlyExpenses: number;
-  lastExpenseCalculation: number;
-  activeMarketEvents: MarketEvent[];
-  isBankrupt: boolean;
-  bankruptcyCount: number;
-  economicPhase: EconomicPhase;
-  economicIndicators: EconomicIndicators;
-  goals: Goal[];
+  
   lastGoalReset: number;
-  marketSentiment: number;
-  inflationRate: number;
-  efficiencyMultiplier: number;
-  lastEconomicUpdate: number;
 }
